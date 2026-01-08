@@ -1,0 +1,21 @@
+feature_id: F-0002
+title: Feature-Based Autonomous Execution
+
+description: >
+  Enable the engine to automatically proceed to the next feature
+  after completing one, without manual intervention.
+
+inputs:
+  - completed_features list
+  - available feature files
+
+outputs:
+  - next feature selected and executed
+
+assumptions:
+  - Features are executed in lexical order
+  - Completed features are never re-run
+
+acceptance_criteria:
+  - After F-0001 completes, F-0002 is selected automatically
+  - No manual change to progress.json is required
