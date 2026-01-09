@@ -1,0 +1,50 @@
+name: CI Healthcheck
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  healthcheck:
+    name: Runner & Environment Healthcheck
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify runner identity
+        run: |
+          echo "Runner hostname:"
+          hostname
+          echo
+          echo "User:"
+          whoami
+          echo
+          echo "Working directory:"
+          pwd
+
+      - name: Verify Python environment
+        run: |
+          echo "Python executable:"
+          which python || true
+          which python3 || true
+          echo
+          echo "Python version:"
+          python --version || python3 --version
+
+      - name: Verify GitHub CLI
+        run: |
+          gh --version
+          gh auth status
+
+      - name: Verify repository state
+        run: |
+          git status
+          git remote -v
+
+      - name: Healthcheck complete
+        run: echo "✅ CI healthcheck passed"
