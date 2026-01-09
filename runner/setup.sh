@@ -1,29 +1,53 @@
 #!/bin/bash
 set -e
 
-echo "== GitHub Self-Hosted Runner Setup =="
+TEMPLATE_REPO="https://github.com/Itai-Amir/ai-engine-template.git"
+RUNNER_DIR="runner/actions-runner"
 
-if [ -z "$1" ]; then
-  echo "Usage: ./setup.sh <GITHUB_REPO_URL>"
+echo "== AI Engine Template Setup =="
+
+# ------------------------------------------------------------
+# 1. Ensure git repository
+# ------------------------------------------------------------
+if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  echo "❌ Not inside a git repository."
   exit 1
 fi
 
-REPO_URL="$1"
+if ! git remote get-url origin >/dev/null 2>&1; then
+  echo "❌ Missing 'origin' remote."
+  exit 1
+fi
 
-mkdir -p actions-runner
-cd actions-runner
+# ------------------------------------------------------------
+# 2. Add template remote
+# ------------------------------------------------------------
+if git remote get-url template >/dev/null 2>&1; then
+  echo "ℹ️ Template remote already exists."
+else
+  git remote add template "$TEMPLATE_REPO"
+  echo "✅ Added template remote:"
+  echo "   template → $TEMPLATE_REPO"
+fi
 
-curl -L -o runner.tar.gz https://github.com/actions/runner/releases/download/v2.330.0/actions-runner-osx-x64-2.330.0.tar.gz
-tar xzf runner.tar.gz
-rm runner.tar.gz
+git fetch template >/dev/null
+
+# ------------------------------------------------------------
+# 3. Check runner installation
+# ------------------------------------------------------------
+if [ ! -d "$RUNNER_DIR" ]; then
+  echo "❌ GitHub Actions runner not installed."
+  echo "Expected directory: $RUNNER_DIR"
+  exit 1
+fi
+
+# ------------------------------------------------------------
+# 4. Check runner status
+# ------------------------------------------------------------
+echo ""
+echo "Checking runner status..."
+./runner/status.sh
 
 echo ""
-echo "Go to:"
-echo "  $REPO_URL/settings/actions/runners"
-echo "Click 'New self-hosted runner' and copy the token."
-echo ""
-read -p "Paste runner token here: " TOKEN
-
-./config.sh --url "$REPO_URL" --token "$TOKEN"
-
-echo "Runner configured."
+echo "✅ Setup complete."
+echo "You can now push code and CI will run automatically."

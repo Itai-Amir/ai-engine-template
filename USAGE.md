@@ -1,169 +1,219 @@
-# 🧑‍🏫 User Guide for a New Project Created from the Template
-(Self-Hosted Runner + Autonomous CI)
+# AI Engine Template – Usage Guide
 
-This guide is written for users with no prior knowledge.  
-Follow the steps **exactly in order** and everything will work.
+This repository is a **production-grade template** for building AI-powered products with a fully autonomous feature lifecycle and CI integration.
+
+The template is **feature-complete (v1.0)** and designed to be:
+- Minimal
+- Deterministic
+- Copilot-friendly
+- Runner-based (no GitHub-hosted runners required)
+- Safe to upgrade via upstream merges
 
 ---
 
-## 🟢 Step 0 – Make Sure You Are in the Correct Project
+## 1. Repository Model
 
-Open a terminal on your computer and run:
+Every product repository created from this template:
+
+- Is generated using **GitHub “Use this template”**
+- Automatically adds the template as an upstream remote named `template`
+- Receives improvements via:
+  ```bash
+  git fetch template
+  git merge template/main
+  ```
+
+The template itself is treated as **read-only infrastructure**.
+
+---
+
+## 2. One-Time Setup (New Product)
+
+### 2.1 GitHub Secret
+
+Add the following GitHub Actions secret:
+
+- `OPENAI_API_KEY`
+
+This is required for autonomous execution.
+
+---
+
+### 2.2 Runner Setup
+
+On the machine that will act as the **self-hosted runner**:
 
 ```bash
-cd ~/Projects/my-first-product
-ls
+./runner/setup.sh
 ```
 
-You should see folders like:
-```
-scripts/
-runner/
-.github/
-```
+This script:
+- Registers the GitHub runner
+- Validates OS / architecture
+- Adds the `template` upstream remote
+- Ensures repo ↔ runner compatibility
 
-If you see the `runner/` folder, you are in the correct place.
+⚠️ The runner is installed as a **background service**.  
+You do **not** start it manually.
 
 ---
 
-## 🟢 Step 1 – Create an OPENAI_API_KEY (One-Time)
+### 2.3 Verification
 
-1. Open this page in your browser:
-   https://platform.openai.com/api-keys
-2. Log in or sign up
-3. Click **Create new secret key**
-4. Copy the key that starts with `sk-...`
-
-⚠️ Save this key somewhere safe. You will use it in the next step.
-
----
-
-## 🟢 Step 2 – Add OPENAI_API_KEY to GitHub
-
-1. Open your repository on GitHub  
-   Example:
-   https://github.com/Itai-Amir/my-first-product
-
-2. Click **Settings**
-3. In the left menu, click:
-   **Secrets and variables → Actions**
-4. Click **New repository secret**
-5. Fill in:
-   - **Name**: `OPENAI_API_KEY`
-   - **Secret**: paste the `sk-...` key
-6. Click **Save secret**
-
-✔ OpenAI setup is done. You will not touch this again.
-
----
-
-## 🟢 Step 3 – Install the Self-Hosted Runner (One-Time per Machine)
-
-In your terminal, inside the project:
+Check runner and CI health at any time:
 
 ```bash
-cd runner
-ls
+./runner/status.sh
 ```
 
-You should see:
-```
-setup.sh
-start.sh
-README.md
-```
-
-### Run the setup script
-
-```bash
-./setup.sh https://github.com/Itai-Amir/my-first-product
-```
-
-The script will download the GitHub Actions runner and then pause, asking for a **runner token**.
+This validates:
+- Runner process is alive
+- Repo ↔ runner match
+- `runs-on` / labels alignment
+- OS / architecture compatibility
+- Runner version drift
+- GitHub Actions health via API
 
 ---
 
-## 🟢 Step 4 – Get the Runner Token from GitHub
+## 3. Daily Development Workflow
 
-1. In your browser, go to your repository
-2. Navigate to:
-   **Settings → Actions → Runners**
-3. Click **New self-hosted runner**
-4. GitHub will show instructions and a **temporary token**
-5. Copy only the token
+### 3.1 Normal Development
 
-Return to the terminal and paste the token when prompted.
-
-If successful, you will see:
-```
-Runner configured successfully
-```
-
----
-
-## 🟢 Step 5 – Start the Runner
-
-Still inside the `runner` folder, run:
+Work as with any standard repository:
 
 ```bash
-./start.sh
-```
-
-You should see:
-```
-Listening for Jobs
-```
-
-⚠️ **Do not close this terminal.**  
-This process must keep running for CI to work.
-
----
-
-## 🟢 Step 6 – Verify Everything Works
-
-Open a new terminal window (or tab) and run:
-
-```bash
-git commit --allow-empty -m "Trigger CI"
+git checkout -b feature/my-change
+# make changes
+git commit -m "..."
 git push
 ```
 
-### What should happen
-
-- On GitHub → **Actions**:
-  - A workflow named **Autonomous Engine** starts running
-- In the runner terminal:
-  - You will see logs like:
-    ```
-    PLAN
-    APPROVE
-    IMPLEMENT
-    VERIFY
-    ```
-
-🎉 That’s it. Autonomous CI is now running.
+On every push:
+- CI runs automatically
+- The self-hosted runner is used
+- Health checks are enforced
 
 ---
 
-## 🧠 Quick Summary
+### 3.2 Autonomous Feature Execution
 
-- `OPENAI_API_KEY` → added once to GitHub Secrets
-- `setup.sh` → run once to connect the machine
-- `start.sh` → keep running
-- Every `git push` → CI runs automatically
+The template supports a **fully autonomous lifecycle**:
+
+```
+PLAN → APPROVE → IMPLEMENT → VERIFY
+```
+
+To run it locally or in CI:
+
+```bash
+python scripts/run_autonomous.py
+```
+
+Characteristics:
+- No interactive questions
+- Deterministic execution
+- Safe to run repeatedly
+- Designed for Copilot Agent / Chat usage
 
 ---
 
-## 🧩 Important Notes
+## 4. Copilot Usage Model
 
-- The runner is tied to **this repository**
-- The runner token is **single-use**
-- Never commit API keys or tokens
-- The runner process must be running for CI to execute
+This template is optimized for **Copilot-driven implementation**.
+
+Key principles:
+- Copilot executes, not designs the system
+- No IDE lock-in
+- No GitHub hacks
+- No runtime prompting
+
+The autonomous script is the **single entry point**.
 
 ---
 
-If something does not work, check:
-- The runner is **Idle** in GitHub → Settings → Actions → Runners
-- `start.sh` is still running
-- `OPENAI_API_KEY` exists in GitHub Secrets
+## 5. CI Model
+
+### 5.1 GitHub Actions
+
+The repository includes:
+
+```
+.github/workflows/healthcheck.yml
+```
+
+This workflow:
+- Ensures the runner is healthy
+- Prevents silent CI degradation
+- Fails fast on environment drift
+
+---
+
+### 5.2 Self-Hosted Runner Only
+
+- GitHub-hosted runners are intentionally **not used**
+- All CI runs on your controlled infrastructure
+- Deterministic OS and architecture
+
+---
+
+## 6. Upgrading from the Template
+
+The template is frozen at **v1.0**, but may receive safe upgrades.
+
+To upgrade a product repo:
+
+```bash
+git fetch template
+git merge template/main
+```
+
+Guidelines:
+- Expect **non-breaking** changes only
+- Resolve conflicts once
+- Never modify template-owned files unless required
+
+---
+
+## 7. What This Template Intentionally Does NOT Do
+
+By design, this template avoids:
+- Web dashboards
+- Custom GitHub Apps
+- YAML-based orchestration frameworks
+- Plugin systems
+- AI-driven CI logic
+- Over-engineered abstractions
+
+Simplicity and predictability are explicit goals.
+
+---
+
+## 8. Expected User Experience (Summary)
+
+For a new product:
+
+1. Add `OPENAI_API_KEY` to GitHub Secrets
+2. Run `./runner/setup.sh`
+3. Push code
+4. CI works automatically
+
+No further manual steps are required.
+
+---
+
+## 9. Support Model
+
+This template assumes:
+- Strong engineering discipline
+- Familiarity with Git and CI
+- Intentional changes only
+
+If something fails, the system is designed to tell you **exactly why**.
+
+---
+
+## 10. License / Ownership
+
+This template is infrastructure.
+Your product code remains fully yours.
