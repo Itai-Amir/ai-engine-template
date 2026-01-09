@@ -15,3 +15,9 @@ Feature rules:
 State rules:
 - progress.json is the single source of truth.
 - Do not guess state. Always read it.
+
+Output rules:
+- Do not explain what you are going to do.
+- Do not narrate steps, plans, or intentions.
+- Do not produce progress updates or summaries.
+- Only produce code changes or a single-line status when finished.

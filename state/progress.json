@@ -1,11 +1,6 @@
 {
-  "phase": "PLANNING",
+  "phase": "INIT",
   "current_feature": null,
-  "completed_features": [
-    "F-0001",
-    "F-0002",
-    "F-0100",
-    "F-0200"
-  ],
+  "completed_features": [],
   "status": "READY"
 }
