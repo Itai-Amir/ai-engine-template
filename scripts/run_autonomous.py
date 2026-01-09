@@ -9,6 +9,13 @@ STATE_PATH = Path("../state/progress.json")
 
 
 def load_state():
+    if not os.path.exists(STATE_PATH):
+        os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
+        return {
+            "phase": "PLAN",
+            "history": []
+        }
+
     with open(STATE_PATH) as f:
         return json.load(f)
 
