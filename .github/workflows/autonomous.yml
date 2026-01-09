@@ -1,29 +1,49 @@
-name: Autonomous Engine
+name: Autonomous Development
 
 on:
+  workflow_dispatch:
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 jobs:
-  run-engine:
+  autonomous:
+    name: Autonomous Feature Lifecycle
     runs-on: self-hosted
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install deps
+      - name: Verify runner identity
         run: |
-          pip install --upgrade pip
-          pip install openai pyyaml
+          echo "Runner hostname:"
+          hostname
+          echo
+          echo "User:"
+          whoami
+          echo
+          echo "Working directory:"
+          pwd
 
-      - name: Run engine
+      - name: Verify Python environment
+        run: |
+          echo "Python executable:"
+          which python || true
+          which python3 || true
+          echo
+          echo "Python version:"
+          python --version || python3 --version
+
+      - name: Verify GitHub CLI
+        run: |
+          gh --version
+          gh auth status
+
+      - name: Run autonomous lifecycle
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          cd scripts
-          python run_autonomous.py
+          python scripts/run_autonomous.py
+
+      - name: Autonomous run complete
+        run: echo "✅ Autonomous lifecycle completed"
