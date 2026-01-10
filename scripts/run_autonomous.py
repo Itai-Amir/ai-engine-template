@@ -59,12 +59,12 @@ def read(path):
 
 # ------------------------------------------------------------
 
-def build_prompt(feature_id, retry=False):
+def build_prompt(fid, retry=False):
     retry_note = ""
     if retry:
         retry_note = """
 PREVIOUS ATTEMPT FAILED.
-Fix the diff. Ensure hunks, file headers, and line numbers are correct.
+Fix the diff. Ensure file headers, hunks, and paths are correct.
 Return a FULL unified diff.
 """
 
@@ -75,7 +75,7 @@ GLOBAL EXECUTION CONVENTIONS:
 {read(GLOBAL_CONVENTIONS)}
 
 FEATURE PLAN:
-{read(os.path.join(FEATURES_DIR, f"{feature_id}.md"))}
+{read(os.path.join(FEATURES_DIR, f"{fid}.md"))}
 
 {retry_note}
 
@@ -101,8 +101,6 @@ def run_llm(prompt):
         temperature=0,
     )
     return (r.choices[0].message.content or "").strip()
-
-# ------------------------------------------------------------
 
 def apply_patch(patch):
     if not patch.startswith("diff --git"):
@@ -131,10 +129,13 @@ def main():
     log(f"Found {total} features")
 
     for i, fid in enumerate(features, 1):
+        prefix = f"[{i}/{total}] Feature {fid}"
+
+        # 🔒 HARD SKIP — IDMPOTENCY GUARANTEE
         if fid in done:
+            log(f"{prefix} — SKIP (already completed)")
             continue
 
-        prefix = f"[{i}/{total}] Feature {fid}"
         log(f"{prefix} — START")
 
         if AUTONOMOUS_MODE == "prepare":
@@ -148,7 +149,6 @@ def main():
         if patch and apply_patch(patch):
             success = True
         else:
-            # rollback partial changes before retry
             log(f"{prefix} — CLEAN WORKTREE BEFORE RETRY")
             git(["git", "reset", "--hard", "HEAD"])
 
@@ -158,7 +158,6 @@ def main():
             log(f"{prefix} — RETRY")
             patch = run_llm(build_prompt(fid, retry=True))
             success = patch and apply_patch(patch)
-        
 
         if not success:
             raise RuntimeError(f"{prefix}: failed to apply valid diff after retry")
