@@ -1,150 +1,123 @@
 #!/usr/bin/env python3
-
 import os
 import sys
 import json
 import subprocess
-import importlib
-from typing import Dict, Any, List
+from typing import List
 
-REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, REPO_ROOT)
-STATE_PATH = os.path.join(REPO_ROOT, "state", "progress.json")
-PLAN_PATH = os.path.join(REPO_ROOT, "PROJECT_SPEC.md")
-FEATURES_DIR = os.path.join(REPO_ROOT, "scripts", "features")
-FEATURES_PKG = "scripts.features"
 
-INITIAL_STATE = {
-    "phase": "PLAN",
-    "completed_features": [],
-    "current_feature": None,
-    "history": [],
-}
+FEATURES_DIR = os.path.join(REPO_ROOT, "features")
+STATE_DIR = os.path.join(REPO_ROOT, "state")
+STATE_PATH = os.path.join(STATE_DIR, "progress.json")
+GLOBAL_CONVENTIONS_PATH = os.path.join(
+    REPO_ROOT, "GLOBAL_EXECUTION_CONVENTIONS.md"
+)
 
-# ---------------------------------------------------------------------
-# Git helpers
-# ---------------------------------------------------------------------
+
+def load_global_conventions() -> str:
+    with open(GLOBAL_CONVENTIONS_PATH, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def load_feature_plan(feature_id: str) -> str:
+    path = os.path.join(FEATURES_DIR, f"{feature_id}.md")
+    with open(path, "r", encoding="utf-8") as f:
+        return f.read()
+
+
+def list_features() -> List[str]:
+    ids = []
+    for name in os.listdir(FEATURES_DIR):
+        if name.endswith(".md"):
+            ids.append(name.replace(".md", ""))
+    return sorted(ids)
+
+
+def load_state() -> dict:
+    if not os.path.exists(STATE_PATH):
+        return {
+            "completed_features": []
+        }
+    with open(STATE_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def save_state(state: dict) -> None:
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
+        json.dump(state, f, indent=2, sort_keys=True)
+
+
+def build_copilot_prompt(feature_id: str) -> str:
+    global_rules = load_global_conventions()
+    feature_plan = load_feature_plan(feature_id)
+
+    return f"""
+You are GitHub Copilot running in headless execution mode.
+
+You MUST follow ALL instructions exactly.
+
+================ GLOBAL EXECUTION CONVENTIONS ================
+{global_rules}
+
+================ FEATURE PLAN ({feature_id}) =================
+{feature_plan}
+
+================ EXECUTION RULES =============================
+
+- Implement the feature exactly as specified
+- Do not ask questions
+- Do not invent behavior
+- Do not modify files outside the allowed list
+- After implementation:
+  - Run pytest
+  - If tests pass, commit exactly once
+  - If tests fail, stop immediately
+
+BEGIN.
+""".strip()
+
+
+def run_copilot(prompt: str) -> None:
+    subprocess.run(
+        ["copilot", "exec"],
+        input=prompt,
+        text=True,
+        check=True,
+    )
+
 
 def git(cmd: List[str]) -> None:
     subprocess.check_call(cmd, cwd=REPO_ROOT)
 
-def ensure_git_identity() -> None:
-    git(["git", "config", "user.name", "autonomous-engine"])
-    git(["git", "config", "user.email", "autonomous@localhost"])
-
-# ---------------------------------------------------------------------
-# State
-# ---------------------------------------------------------------------
-
-def load_state() -> Dict[str, Any]:
-    if not os.path.exists(STATE_PATH):
-        os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-        return INITIAL_STATE.copy()
-    with open(STATE_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_state(state: Dict[str, Any]) -> None:
-    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    with open(STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2)
-
-# ---------------------------------------------------------------------
-# PLAN compilation
-# ---------------------------------------------------------------------
-
-def load_plan_features() -> List[str]:
-    features: List[str] = []
-
-    if not os.path.exists(PLAN_PATH):
-        return features
-
-    with open(PLAN_PATH, "r", encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if line.startswith("# Feature "):
-                fid = line.split("Feature ")[1].split(":")[0].strip()
-                features.append(fid)
-
-    return features
-
-# ---------------------------------------------------------------------
-# Feature scaffolding
-# ---------------------------------------------------------------------
-
-def scaffold_feature(feature_id: str) -> None:
-    os.makedirs(FEATURES_DIR, exist_ok=True)
-    path = os.path.join(FEATURES_DIR, f"feature_{feature_id}.py")
-
-    if os.path.exists(path):
-        return
-
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(
-            f'''FEATURE_ID = "{feature_id}"
-
-def implement(state):
-    raise NotImplementedError(
-        "Feature {feature_id} is defined in PROJECT_SPEC.md "
-        "but not implemented yet."
-    )
-'''
-        )
-
-    git(["git", "add", path])
-    git([
-        "git",
-        "commit",
-        "-m",
-        f"scaffold: add feature {feature_id} implementation stub",
-    ])
-    git(["git", "push", "origin", "HEAD:main"])
-
-    raise RuntimeError(
-        f"Feature {feature_id} scaffolded. "
-        "Implement it and rerun CI."
-    )
-
-# ---------------------------------------------------------------------
-# Dynamic feature execution
-# ---------------------------------------------------------------------
-
-def implement_feature(feature_id: str, state: Dict[str, Any]) -> None:
-    module_name = f"{FEATURES_PKG}.feature_{feature_id}"
-
-    try:
-        module = importlib.import_module(module_name)
-    except ImportError:
-        scaffold_feature(feature_id)
-
-    if getattr(module, "FEATURE_ID", None) != feature_id:
-        raise RuntimeError(f"FEATURE_ID mismatch in {module_name}")
-
-    if not hasattr(module, "implement"):
-        raise RuntimeError(f"No implement(state) in {module_name}")
-
-    module.implement(state)
-
-# ---------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------
 
 def main() -> None:
-    os.chdir(REPO_ROOT)
-    ensure_git_identity()
-
+    features = list_features()
     state = load_state()
-    plan_features = load_plan_features()
+    completed = set(state.get("completed_features", []))
 
-    for fid in plan_features:
-        if fid not in state["completed_features"]:
-            state["current_feature"] = fid
-            implement_feature(fid, state)
-            state["completed_features"].append(fid)
-            state["history"].append({"implemented": fid})
+    for feature_id in features:
+        if feature_id in completed:
+            continue
 
-    state["current_feature"] = None
-    state["phase"] = "VERIFY"
-    save_state(state)
+        prompt = build_copilot_prompt(feature_id)
+        run_copilot(prompt)
+
+        subprocess.check_call(["pytest"], cwd=REPO_ROOT)
+
+        git(["git", "add", "."])
+        git([
+            "git", "commit",
+            "-m", f"feature {feature_id}: implemented autonomously"
+        ])
+        git(["git", "push", "origin", "main"])
+
+        completed.add(feature_id)
+        state["completed_features"] = sorted(completed)
+        save_state(state)
+
 
 if __name__ == "__main__":
     main()

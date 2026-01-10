@@ -1,13 +1,4 @@
-# OS
 .DS_Store
-**/.DS_Store
-
-# Python
+state/*.json
 __pycache__/
-*.pyc
-
-# Runner
-runner/actions-runner/
-
-# State file (keep folder, not content)
-state/progress.json
+.pytest_cache/
