@@ -23,6 +23,12 @@ FEATURE_002_PATH = os.path.join(
     "002-load-knowledge-pack-immutable.yml",
 )
 
+FEATURE_010_PATH = os.path.join(
+    REPO_ROOT,
+    "features",
+    "010-evaluate-hard-gates.yml",
+)
+
 # ---------------------------------------------------------------------------
 # Canonical state
 # ---------------------------------------------------------------------------
@@ -88,6 +94,9 @@ def feature_002_defined() -> bool:
 def feature_001_defined() -> bool:
     return os.path.exists(FEATURE_001_PATH)
 
+def feature_010_defined() -> bool:
+    return os.path.exists(FEATURE_010_PATH)
+    
 # ---------------------------------------------------------------------------
 # Feature 001 implementation
 # ---------------------------------------------------------------------------
@@ -219,6 +228,92 @@ def test_load_knowledge_pack_is_immutable(tmp_path):
     state["history"].append({"implemented": "002"})
 
 
+def implement_feature_010(state: Dict[str, Any]) -> None:
+    if "010" in state["completed_features"]:
+        return
+
+    ensure_git_identity()
+
+    src_path = os.path.join(REPO_ROOT, "src", "hard_gates.py")
+    test_path = os.path.join(REPO_ROOT, "tests", "test_hard_gates.py")
+
+    # --- implementation ---
+    with open(src_path, "w", encoding="utf-8") as f:
+        f.write(
+            """from typing import Mapping, Any
+
+
+def evaluate_hard_gates(
+    knowledge_pack: Mapping[str, Any],
+    gates: Mapping[str, Mapping[str, Any]],
+) -> bool:
+    for key, rule in gates.items():
+        if key not in knowledge_pack:
+            return False
+
+        value = knowledge_pack[key]
+
+        if "min" in rule and value < rule["min"]:
+            return False
+        if "max" in rule and value > rule["max"]:
+            return False
+        if "equals" in rule and value != rule["equals"]:
+            return False
+
+    return True
+"""
+        )
+
+    # --- tests ---
+    with open(test_path, "w", encoding="utf-8") as f:
+        f.write(
+            """import pytest
+from src.hard_gates import evaluate_hard_gates
+
+
+def test_hard_gates_pass():
+    kp = {"score": 80, "level": 3}
+    gates = {
+        "score": {"min": 70},
+        "level": {"equals": 3},
+    }
+
+    assert evaluate_hard_gates(kp, gates) is True
+
+
+def test_hard_gates_fail_min():
+    kp = {"score": 60}
+    gates = {"score": {"min": 70}}
+
+    assert evaluate_hard_gates(kp, gates) is False
+
+
+def test_hard_gates_missing_key():
+    kp = {"score": 80}
+    gates = {"level": {"equals": 2}}
+
+    assert evaluate_hard_gates(kp, gates) is False
+"""
+        )
+
+    git([
+        "git",
+        "add",
+        "src/hard_gates.py",
+        "tests/test_hard_gates.py",
+    ])
+    git([
+        "git",
+        "commit",
+        "-m",
+        "autonomous: implement feature 010 evaluate hard gates",
+    ])
+    git(["git", "push", "origin", "HEAD:main"])
+
+    state["completed_features"].append("010")
+    state["history"].append({"implemented": "010"})
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -236,7 +331,10 @@ def main() -> None:
 
     if feature_002_defined():
         implement_feature_002(state)
-            
+    
+    if feature_010_defined():
+        implement_feature_010(state)
+    
     verify(state)
     save_state(state)
 
