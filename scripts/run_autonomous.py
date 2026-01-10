@@ -132,7 +132,12 @@ def main() -> None:
             log(f"{prefix} — SKIP (already completed)")
             continue
 
-        feature_file = next(FEATURES_DIR.glob(f"{fid}-*.md"))
+        matches = list(FEATURES_DIR.glob(f"{fid}-*.md"))
+        if not matches:
+            log(f"{prefix} — SKIP (no feature spec file found)")
+            continue
+
+        feature_file = matches[0]
 
         log(f"{prefix} — START")
 
