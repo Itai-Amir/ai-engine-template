@@ -37,11 +37,14 @@ def load_feature_plan(feature_id: str) -> str:
 
 
 def list_features() -> List[str]:
-    return sorted(
-        name.replace(".md", "")
-        for name in os.listdir(FEATURES_DIR)
-        if name.endswith(".md")
-    )
+    features = []
+    for name in os.listdir(FEATURES_DIR):
+        if not name.endswith(".md"):
+            continue
+        base = name.replace(".md", "")
+        if base[:3].isdigit():
+            features.append(base)
+    return sorted(features)
 
 
 def load_state() -> dict:
