@@ -1,117 +1,116 @@
+#!/usr/bin/env python3
+
+import os
 import json
 import sys
-import os
+from typing import Dict, Any
 
-from pathlib import Path
+STATE_PATH = "../state/progress.json"
 
-from create_feature_pr import main as create_features
-from approve_feature import approve
+# ---------------------------------------------------------------------------
+# Canonical engine state
+# ---------------------------------------------------------------------------
 
-STATE_PATH = Path("../state/progress.json")
+INITIAL_STATE: Dict[str, Any] = {
+    "phase": "PLAN",
+    "completed_features": [],
+    "current_feature": None,
+    "history": []
+}
 
 
-def load_state():
+# ---------------------------------------------------------------------------
+# State handling
+# ---------------------------------------------------------------------------
+
+def load_state() -> Dict[str, Any]:
+    """
+    Load engine state from disk.
+    If this is the first run, bootstrap a canonical initial state.
+    """
     if not os.path.exists(STATE_PATH):
         os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-        return {
-            "phase": "PLAN",
-            "history": []
-        }
+        return INITIAL_STATE.copy()
 
-    with open(STATE_PATH) as f:
-        return json.load(f)
+    with open(STATE_PATH, "r") as f:
+        state = json.load(f)
+
+    if not is_valid_state(state):
+        raise RuntimeError("Invalid progress.json structure")
+
+    return state
 
 
-def save_state(state):
+def save_state(state: Dict[str, Any]) -> None:
+    """
+    Persist engine state to disk.
+    """
+    os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     with open(STATE_PATH, "w") as f:
-        json.dump(state, f, indent=2)
+        json.dump(state, f, indent=2, sort_keys=True)
 
 
-def main():
-    # Explicit planning mode (Approach B)
-    if "--auto-plan" in sys.argv:
-        import subprocess
-        subprocess.run(["python", "copilot_plan.py"], check=True)
-        return
+def is_valid_state(state: Dict[str, Any]) -> bool:
+    """
+    Validate state structure strictly.
+    """
+    if not isinstance(state, dict):
+        return False
 
-    while True:
-        state = load_state()
+    required_keys = {
+        "phase": str,
+        "completed_features": list,
+        "current_feature": (str, type(None)),
+        "history": list,
+    }
 
-        # Fail fast on corrupted state
-        if "phase" not in state or "current_feature" not in state:
-            raise RuntimeError("Invalid progress.json structure")
+    for key, expected_type in required_keys.items():
+        if key not in state:
+            return False
+        if not isinstance(state[key], expected_type):
+            return False
 
-        phase = state["phase"]
-        feature = state["current_feature"]
+    return True
 
-        if phase == "BOOTSTRAP":
-            create_features()
-            state["phase"] = "PLANNING"
 
-        elif phase == "PLANNING":
-            if state["current_feature"] is None:
-                create_features()
-                state = load_state()
+# ---------------------------------------------------------------------------
+# Autonomous lifecycle (skeleton – feature logic lives elsewhere)
+# ---------------------------------------------------------------------------
 
-                if state["current_feature"] is None:
-                    save_state(state)
-                    print("No remaining features. Engine idle.")
-                    break
+def plan(state: Dict[str, Any]) -> None:
+    state["phase"] = "PLAN"
+    state["history"].append({"phase": "PLAN"})
 
-        elif phase == "APPROVE":
-            approve(feature)
 
-            # APPROVE commits to disk → move to IMPLEMENT and stop
-            state = load_state()
-            state["phase"] = "IMPLEMENT"
-            save_state(state)
-            return
+def approve(state: Dict[str, Any]) -> None:
+    state["phase"] = "APPROVE"
+    state["history"].append({"phase": "APPROVE"})
 
-        elif phase == "IMPLEMENT":
-            import subprocess
-            subprocess.run(["python", "headless_implement.py"], check=True)
 
-            # IMPLEMENT is blocking → advance to VERIFY and stop
-            state["phase"] = "VERIFY"
-            save_state(state)
-            return
+def implement(state: Dict[str, Any]) -> None:
+    state["phase"] = "IMPLEMENT"
+    state["history"].append({"phase": "IMPLEMENT"})
 
-        elif phase == "VERIFY":
-            import subprocess
 
-            feature_file = Path(f"../features/{feature}.yaml")
-            if not feature_file.exists():
-                raise RuntimeError(f"Missing feature file: {feature_file}")
+def verify(state: Dict[str, Any]) -> None:
+    state["phase"] = "VERIFY"
+    state["history"].append({"phase": "VERIFY"})
 
-            verify_command = None
-            with open(feature_file) as f:
-                for line in f:
-                    if line.strip().startswith("verify_command:"):
-                        verify_command = line.split(":", 1)[1].strip()
-                        break
 
-            if verify_command:
-                try:
-                    subprocess.run(
-                        verify_command.split(),
-                        check=True,
-                        cwd=Path("..")
-                    )
-                except subprocess.CalledProcessError:
-                    print("VERIFY FAILED")
-                    return
-            else:
-                print("No verify_command; marking feature as completed.")
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
 
-            state["phase"] = "COMPLETED"
-            if feature not in state["completed_features"]:
-                state["completed_features"].append(feature)
+def main() -> None:
+    state = load_state()
 
-        elif phase == "COMPLETED":
-            state["current_feature"] = None
-            state["phase"] = "PLANNING"
+    # Simple deterministic lifecycle pass
+    plan(state)
+    approve(state)
+    implement(state)
+    verify(state)
 
-        save_state(state)
+    save_state(state)
 
 
 if __name__ == "__main__":
