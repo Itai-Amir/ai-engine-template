@@ -1,5 +1,4 @@
-.DS_Store
-state/*.json
+state/*.prompt.txt
 __pycache__/
-.pytest_cache/
-state/prompts/
+*.pyc
+.DS_Store
