@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 
 import os
+import sys
 import json
 import subprocess
 import importlib
 from typing import Dict, Any, List
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, REPO_ROOT)
 STATE_PATH = os.path.join(REPO_ROOT, "state", "progress.json")
 PLAN_PATH = os.path.join(REPO_ROOT, "PROJECT_SPEC.md")
 FEATURES_DIR = os.path.join(REPO_ROOT, "scripts", "features")
