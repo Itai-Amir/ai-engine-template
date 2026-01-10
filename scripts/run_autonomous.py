@@ -5,6 +5,8 @@ import json
 import subprocess
 from typing import List
 
+from openai import OpenAI
+
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, REPO_ROOT)
 
@@ -14,6 +16,8 @@ STATE_PATH = os.path.join(STATE_DIR, "progress.json")
 GLOBAL_CONVENTIONS_PATH = os.path.join(
     REPO_ROOT, "GLOBAL_EXECUTION_CONVENTIONS.md"
 )
+
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def load_global_conventions() -> str:
@@ -37,9 +41,7 @@ def list_features() -> List[str]:
 
 def load_state() -> dict:
     if not os.path.exists(STATE_PATH):
-        return {
-            "completed_features": []
-        }
+        return {"completed_features": []}
     with open(STATE_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
@@ -50,43 +52,57 @@ def save_state(state: dict) -> None:
         json.dump(state, f, indent=2, sort_keys=True)
 
 
-def build_copilot_prompt(feature_id: str) -> str:
-    global_rules = load_global_conventions()
-    feature_plan = load_feature_plan(feature_id)
-
+def build_llm_prompt(feature_id: str) -> str:
     return f"""
-You are GitHub Copilot running in headless execution mode.
+You are an autonomous software compiler.
 
 You MUST follow ALL instructions exactly.
+You MUST NOT ask questions.
+You MUST NOT invent behavior.
 
 ================ GLOBAL EXECUTION CONVENTIONS ================
-{global_rules}
+{load_global_conventions()}
 
 ================ FEATURE PLAN ({feature_id}) =================
-{feature_plan}
+{load_feature_plan(feature_id)}
 
 ================ EXECUTION RULES =============================
 
 - Implement the feature exactly as specified
-- Do not ask questions
-- Do not invent behavior
-- Do not modify files outside the allowed list
+- Modify only allowed files
 - After implementation:
   - Run pytest
-  - If tests pass, commit exactly once
+  - If tests pass, stop and return "DONE"
   - If tests fail, stop immediately
 
 BEGIN.
 """.strip()
 
 
-def run_copilot(prompt: str) -> None:
-    subprocess.run(
-        ["copilot", "exec"],
-        input=prompt,
-        text=True,
-        check=True,
+def run_llm(prompt: str) -> None:
+    response = client.chat.completions.create(
+        model="gpt-4.1",
+        messages=[
+            {"role": "system", "content": "You are a deterministic code generator."},
+            {"role": "user", "content": prompt},
+        ],
+        temperature=0,
     )
+
+    code = response.choices[0].message.content
+    apply_patch(code)
+
+
+def apply_patch(patch: str) -> None:
+    process = subprocess.Popen(
+        ["git", "apply"],
+        stdin=subprocess.PIPE,
+        cwd=REPO_ROOT,
+        text=True,
+    )
+    process.communicate(patch)
+    if process.returncode != 0:
+        raise RuntimeError("Failed to apply patch from LLM output")
 
 
 def git(cmd: List[str]) -> None:
@@ -102,8 +118,8 @@ def main() -> None:
         if feature_id in completed:
             continue
 
-        prompt = build_copilot_prompt(feature_id)
-        run_copilot(prompt)
+        prompt = build_llm_prompt(feature_id)
+        run_llm(prompt)
 
         subprocess.check_call(["pytest"], cwd=REPO_ROOT)
 
