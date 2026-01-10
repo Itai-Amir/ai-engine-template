@@ -58,13 +58,34 @@ def read(path):
         return f.read()
 
 # ------------------------------------------------------------
+# 🔒 PRE-FLIGHT RECONCILIATION
+# ------------------------------------------------------------
+
+def infer_completed_features():
+    """
+    Infer completed features from existing code.
+    Convention: feature XXX creates src/feature_XXX.py
+    """
+    completed = set()
+    src_dir = os.path.join(REPO_ROOT, "src")
+    if not os.path.isdir(src_dir):
+        return completed
+
+    for name in os.listdir(src_dir):
+        if name.startswith("feature_") and name.endswith(".py"):
+            fid = name.replace("feature_", "").replace(".py", "")
+            if fid.isdigit():
+                completed.add(fid)
+    return completed
+
+# ------------------------------------------------------------
 
 def build_prompt(fid, retry=False):
     retry_note = ""
     if retry:
         retry_note = """
 PREVIOUS ATTEMPT FAILED.
-Fix the diff. Ensure file headers, hunks, and paths are correct.
+Fix the diff. Ensure headers, hunks and paths are correct.
 Return a FULL unified diff.
 """
 
@@ -105,7 +126,6 @@ def run_llm(prompt):
 def apply_patch(patch):
     if not patch.startswith("diff --git"):
         return False
-
     p = subprocess.Popen(
         ["git", "apply"],
         stdin=subprocess.PIPE,
@@ -121,8 +141,16 @@ def main():
     log(f"AUTONOMOUS MODE: {AUTONOMOUS_MODE}")
 
     os.makedirs(PROMPTS_DIR, exist_ok=True)
+
     state = load_state()
     done = set(state["completed_features"])
+
+    # 🔒 Reconcile with reality
+    inferred = infer_completed_features()
+    if inferred - done:
+        log(f"Reconciling completed features: {sorted(inferred - done)}")
+        done |= inferred
+        save_state({"completed_features": sorted(done)})
 
     features = list_features()
     total = len(features)
@@ -131,7 +159,6 @@ def main():
     for i, fid in enumerate(features, 1):
         prefix = f"[{i}/{total}] Feature {fid}"
 
-        # 🔒 HARD SKIP — IDMPOTENCY GUARANTEE
         if fid in done:
             log(f"{prefix} — SKIP (already completed)")
             continue
@@ -144,18 +171,12 @@ def main():
             log(f"{prefix} — PREPARED")
             continue
 
-        # attempt 1
         patch = run_llm(build_prompt(fid))
         if patch and apply_patch(patch):
             success = True
         else:
             log(f"{prefix} — CLEAN WORKTREE BEFORE RETRY")
             git(["git", "reset", "--hard", "HEAD"])
-
-            with open(os.path.join(STATE_DIR, f"{fid}.failed.diff"), "w") as f:
-                f.write(patch or "")
-
-            log(f"{prefix} — RETRY")
             patch = run_llm(build_prompt(fid, retry=True))
             success = patch and apply_patch(patch)
 
