@@ -1,49 +1,24 @@
 name: Autonomous Development
 
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: write
 
 jobs:
   autonomous:
-    name: Autonomous Feature Lifecycle
     runs-on: self-hosted
-
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Verify runner identity
-        run: |
-          echo "Runner hostname:"
-          hostname
-          echo
-          echo "User:"
-          whoami
-          echo
-          echo "Working directory:"
-          pwd
-
-      - name: Verify Python environment
-        run: |
-          echo "Python executable:"
-          which python || true
-          which python3 || true
-          echo
-          echo "Python version:"
-          python --version || python3 --version
-
-      - name: Verify GitHub CLI
-        run: |
-          gh --version
-          gh auth status
-
-      - name: Run autonomous lifecycle
+      - name: Run autonomous engine
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python scripts/run_autonomous.py
 
-      - name: Autonomous run complete
+      - name: Done
         run: echo "✅ Autonomous lifecycle completed"

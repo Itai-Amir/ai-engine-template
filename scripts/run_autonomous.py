@@ -3,339 +3,145 @@
 import os
 import json
 import subprocess
-from typing import Dict, Any
-
-# ---------------------------------------------------------------------------
-# Paths
-# ---------------------------------------------------------------------------
+import importlib
+from typing import Dict, Any, List
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_PATH = os.path.join(REPO_ROOT, "state", "progress.json")
-FEATURE_001_PATH = os.path.join(
-    REPO_ROOT,
-    "features",
-    "001-persist-candidate-knowledge-pack.yml",
-)
+PLAN_PATH = os.path.join(REPO_ROOT, "PROJECT_SPEC.md")
+FEATURES_DIR = os.path.join(REPO_ROOT, "scripts", "features")
+FEATURES_PKG = "scripts.features"
 
-FEATURE_002_PATH = os.path.join(
-    REPO_ROOT,
-    "features",
-    "002-load-knowledge-pack-immutable.yml",
-)
-
-FEATURE_010_PATH = os.path.join(
-    REPO_ROOT,
-    "features",
-    "010-evaluate-hard-gates.yml",
-)
-
-# ---------------------------------------------------------------------------
-# Canonical state
-# ---------------------------------------------------------------------------
-
-INITIAL_STATE: Dict[str, Any] = {
+INITIAL_STATE = {
     "phase": "PLAN",
     "completed_features": [],
     "current_feature": None,
     "history": [],
 }
 
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Git helpers
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
-def git(cmd: list[str]) -> None:
+def git(cmd: List[str]) -> None:
     subprocess.check_call(cmd, cwd=REPO_ROOT)
 
 def ensure_git_identity() -> None:
     git(["git", "config", "user.name", "autonomous-engine"])
     git(["git", "config", "user.email", "autonomous@localhost"])
 
-# ---------------------------------------------------------------------------
-# State handling
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# State
+# ---------------------------------------------------------------------
 
 def load_state() -> Dict[str, Any]:
     if not os.path.exists(STATE_PATH):
         os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
         return INITIAL_STATE.copy()
-
     with open(STATE_PATH, "r", encoding="utf-8") as f:
         return json.load(f)
 
 def save_state(state: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     with open(STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(state, f, indent=2, sort_keys=True)
+        json.dump(state, f, indent=2)
 
-# ---------------------------------------------------------------------------
-# Lifecycle
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# PLAN compilation
+# ---------------------------------------------------------------------
 
-def plan(state: Dict[str, Any]) -> None:
-    state["phase"] = "PLAN"
-    state["history"].append({"phase": "PLAN"})
+def load_plan_features() -> List[str]:
+    features: List[str] = []
 
-def approve(state: Dict[str, Any]) -> None:
-    state["phase"] = "APPROVE"
-    state["history"].append({"phase": "APPROVE"})
+    if not os.path.exists(PLAN_PATH):
+        return features
 
-def verify(state: Dict[str, Any]) -> None:
-    state["phase"] = "VERIFY"
-    state["history"].append({"phase": "VERIFY"})
+    with open(PLAN_PATH, "r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line.startswith("# Feature "):
+                fid = line.split("Feature ")[1].split(":")[0].strip()
+                features.append(fid)
 
-# ---------------------------------------------------------------------------
-# Feature discovery
-# ---------------------------------------------------------------------------
+    return features
 
-def feature_002_defined() -> bool:
-    return os.path.exists(FEATURE_002_PATH)
-    
-def feature_001_defined() -> bool:
-    return os.path.exists(FEATURE_001_PATH)
+# ---------------------------------------------------------------------
+# Feature scaffolding
+# ---------------------------------------------------------------------
 
-def feature_010_defined() -> bool:
-    return os.path.exists(FEATURE_010_PATH)
-    
-# ---------------------------------------------------------------------------
-# Feature 001 implementation
-# ---------------------------------------------------------------------------
+def scaffold_feature(feature_id: str) -> None:
+    os.makedirs(FEATURES_DIR, exist_ok=True)
+    path = os.path.join(FEATURES_DIR, f"feature_{feature_id}.py")
 
-def implement_feature_001(state: Dict[str, Any]) -> None:
-    if "001" in state["completed_features"]:
+    if os.path.exists(path):
         return
 
-    ensure_git_identity()
-
-    src_dir = os.path.join(REPO_ROOT, "src")
-    test_dir = os.path.join(REPO_ROOT, "tests")
-
-    os.makedirs(src_dir, exist_ok=True)
-    os.makedirs(test_dir, exist_ok=True)
-
-    src_path = os.path.join(src_dir, "knowledge_pack.py")
-    test_path = os.path.join(test_dir, "test_knowledge_pack_persistence.py")
-
-    with open(src_path, "w", encoding="utf-8") as f:
-        f.write(
-            """import json
-from typing import Dict, Any
-
-
-def persist_knowledge_pack(knowledge_pack: Dict[str, Any], path: str) -> None:
     with open(path, "w", encoding="utf-8") as f:
-        json.dump(knowledge_pack, f, sort_keys=True, ensure_ascii=False)
-"""
-        )
-
-    with open(test_path, "w", encoding="utf-8") as f:
         f.write(
-            """import json
-from src.knowledge_pack import persist_knowledge_pack
+            f'''FEATURE_ID = "{feature_id}"
 
-
-def test_persist_and_reload_roundtrip(tmp_path):
-    knowledge_pack = {
-        "name": "Alice",
-        "skills": ["python", "ai"],
-        "experience": 5,
-    }
-
-    output = tmp_path / "knowledge_pack.json"
-    persist_knowledge_pack(knowledge_pack, str(output))
-
-    with open(output, "r", encoding="utf-8") as f:
-        loaded = json.load(f)
-
-    assert loaded == knowledge_pack
-"""
+def implement(state):
+    raise NotImplementedError(
+        "Feature {feature_id} is defined in PROJECT_SPEC.md "
+        "but not implemented yet."
+    )
+'''
         )
 
-    git(["git", "add", "src/knowledge_pack.py", "tests/test_knowledge_pack_persistence.py"])
-    git(["git", "commit", "-m", "autonomous: implement feature 001 persist knowledge pack"])
+    git(["git", "add", path])
+    git([
+        "git",
+        "commit",
+        "-m",
+        f"scaffold: add feature {feature_id} implementation stub",
+    ])
     git(["git", "push", "origin", "HEAD:main"])
 
-    state["completed_features"].append("001")
-    state["history"].append({"implemented": "001"})
-
-def implement_feature_002(state: Dict[str, Any]) -> None:
-    if "002" in state["completed_features"]:
-        return
-
-    ensure_git_identity()
-
-    src_path = os.path.join(REPO_ROOT, "src", "knowledge_pack.py")
-    test_path = os.path.join(
-        REPO_ROOT,
-        "tests",
-        "test_knowledge_pack_load_immutable.py",
+    raise RuntimeError(
+        f"Feature {feature_id} scaffolded. "
+        "Implement it and rerun CI."
     )
 
-    # --- append implementation ---
-    with open(src_path, "a", encoding="utf-8") as f:
-        f.write(
-            """
+# ---------------------------------------------------------------------
+# Dynamic feature execution
+# ---------------------------------------------------------------------
 
-from types import MappingProxyType
-from typing import Mapping, Any
-import json
+def implement_feature(feature_id: str, state: Dict[str, Any]) -> None:
+    module_name = f"{FEATURES_PKG}.feature_{feature_id}"
 
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError:
+        scaffold_feature(feature_id)
 
-def load_knowledge_pack(path: str) -> Mapping[str, Any]:
-    with open(path, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    return MappingProxyType(data)
-"""
-        )
+    if getattr(module, "FEATURE_ID", None) != feature_id:
+        raise RuntimeError(f"FEATURE_ID mismatch in {module_name}")
 
-    # --- test ---
-    with open(test_path, "w", encoding="utf-8") as f:
-        f.write(
-            """import json
-import pytest
-from src.knowledge_pack import load_knowledge_pack
+    if not hasattr(module, "implement"):
+        raise RuntimeError(f"No implement(state) in {module_name}")
 
+    module.implement(state)
 
-def test_load_knowledge_pack_is_immutable(tmp_path):
-    data = {"x": 1}
-    path = tmp_path / "kp.json"
-    with open(path, "w") as f:
-        json.dump(data, f)
-
-    kp = load_knowledge_pack(str(path))
-    assert kp["x"] == 1
-
-    with pytest.raises(TypeError):
-        kp["x"] = 2
-"""
-        )
-
-    git([
-        "git",
-        "add",
-        "src/knowledge_pack.py",
-        "tests/test_knowledge_pack_load_immutable.py",
-    ])
-    git([
-        "git",
-        "commit",
-        "-m",
-        "autonomous: implement feature 002 load knowledge pack immutable",
-    ])
-    git(["git", "push", "origin", "HEAD:main"])
-
-    state["completed_features"].append("002")
-    state["history"].append({"implemented": "002"})
-
-
-def implement_feature_010(state: Dict[str, Any]) -> None:
-    if "010" in state["completed_features"]:
-        return
-
-    ensure_git_identity()
-
-    src_path = os.path.join(REPO_ROOT, "src", "hard_gates.py")
-    test_path = os.path.join(REPO_ROOT, "tests", "test_hard_gates.py")
-
-    # --- implementation ---
-    with open(src_path, "w", encoding="utf-8") as f:
-        f.write(
-            """from typing import Mapping, Any
-
-
-def evaluate_hard_gates(
-    knowledge_pack: Mapping[str, Any],
-    gates: Mapping[str, Mapping[str, Any]],
-) -> bool:
-    for key, rule in gates.items():
-        if key not in knowledge_pack:
-            return False
-
-        value = knowledge_pack[key]
-
-        if "min" in rule and value < rule["min"]:
-            return False
-        if "max" in rule and value > rule["max"]:
-            return False
-        if "equals" in rule and value != rule["equals"]:
-            return False
-
-    return True
-"""
-        )
-
-    # --- tests ---
-    with open(test_path, "w", encoding="utf-8") as f:
-        f.write(
-            """import pytest
-from src.hard_gates import evaluate_hard_gates
-
-
-def test_hard_gates_pass():
-    kp = {"score": 80, "level": 3}
-    gates = {
-        "score": {"min": 70},
-        "level": {"equals": 3},
-    }
-
-    assert evaluate_hard_gates(kp, gates) is True
-
-
-def test_hard_gates_fail_min():
-    kp = {"score": 60}
-    gates = {"score": {"min": 70}}
-
-    assert evaluate_hard_gates(kp, gates) is False
-
-
-def test_hard_gates_missing_key():
-    kp = {"score": 80}
-    gates = {"level": {"equals": 2}}
-
-    assert evaluate_hard_gates(kp, gates) is False
-"""
-        )
-
-    git([
-        "git",
-        "add",
-        "src/hard_gates.py",
-        "tests/test_hard_gates.py",
-    ])
-    git([
-        "git",
-        "commit",
-        "-m",
-        "autonomous: implement feature 010 evaluate hard gates",
-    ])
-    git(["git", "push", "origin", "HEAD:main"])
-
-    state["completed_features"].append("010")
-    state["history"].append({"implemented": "010"})
-
-
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Entry point
-# ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 def main() -> None:
     os.chdir(REPO_ROOT)
+    ensure_git_identity()
 
     state = load_state()
+    plan_features = load_plan_features()
 
-    plan(state)
-    approve(state)
+    for fid in plan_features:
+        if fid not in state["completed_features"]:
+            state["current_feature"] = fid
+            implement_feature(fid, state)
+            state["completed_features"].append(fid)
+            state["history"].append({"implemented": fid})
 
-    if feature_001_defined():
-        implement_feature_001(state)
-
-    if feature_002_defined():
-        implement_feature_002(state)
-    
-    if feature_010_defined():
-        implement_feature_010(state)
-    
-    verify(state)
+    state["current_feature"] = None
+    state["phase"] = "VERIFY"
     save_state(state)
 
 if __name__ == "__main__":

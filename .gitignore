@@ -1,0 +1,13 @@
+# OS
+.DS_Store
+**/.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+
+# Runner
+runner/actions-runner/
+
+# State file (keep folder, not content)
+state/progress.json
