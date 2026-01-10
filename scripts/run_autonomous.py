@@ -8,10 +8,6 @@ from typing import List
 from datetime import datetime
 from openai import OpenAI
 
-# ============================================================
-# Paths & constants
-# ============================================================
-
 REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 FEATURES_DIR = os.path.join(REPO_ROOT, "features")
 STATE_DIR = os.path.join(REPO_ROOT, "state")
@@ -19,84 +15,84 @@ PROMPTS_DIR = os.path.join(STATE_DIR, "prompts")
 STATE_FILE = os.path.join(STATE_DIR, "progress.json")
 GLOBAL_CONVENTIONS = os.path.join(FEATURES_DIR, "GLOBAL_EXECUTION_CONVENTIONS.md")
 
-AUTONOMOUS_MODE = os.getenv("AUTONOMOUS_MODE", "execute")  # prepare | execute
+AUTONOMOUS_MODE = os.getenv("AUTONOMOUS_MODE", "execute")
 MODEL_NAME = "gpt-4.1-mini"
 
 sys.path.insert(0, REPO_ROOT)
 
-# ============================================================
-# Helpers
-# ============================================================
+# ------------------------------------------------------------
 
-def now() -> str:
+def now():
     return datetime.utcnow().strftime("%H:%M:%S")
 
-def log(msg: str) -> None:
+def log(msg):
     print(f"[{now()}] {msg}", flush=True)
 
-def git(cmd: List[str]) -> None:
+def git(cmd):
     subprocess.check_call(cmd, cwd=REPO_ROOT)
 
-# ============================================================
-# State
-# ============================================================
+# ------------------------------------------------------------
 
-def load_state() -> dict:
+def load_state():
     if not os.path.exists(STATE_FILE):
         return {"completed_features": []}
-    with open(STATE_FILE, "r", encoding="utf-8") as f:
+    with open(STATE_FILE) as f:
         return json.load(f)
 
-def save_state(state: dict) -> None:
+def save_state(state):
     os.makedirs(STATE_DIR, exist_ok=True)
-    with open(STATE_FILE, "w", encoding="utf-8") as f:
+    with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
-# ============================================================
-# Features
-# ============================================================
+# ------------------------------------------------------------
 
-def list_features() -> List[str]:
-    features = []
-    for name in os.listdir(FEATURES_DIR):
-        if name.endswith(".md") and name[:3].isdigit():
-            features.append(name[:-3])
-    return sorted(features)
+def list_features():
+    return sorted(
+        f[:-3]
+        for f in os.listdir(FEATURES_DIR)
+        if f.endswith(".md") and f[:3].isdigit()
+    )
 
-def read_file(path: str) -> str:
-    with open(path, "r", encoding="utf-8") as f:
+def read(path):
+    with open(path) as f:
         return f.read()
 
-# ============================================================
-# Prompt
-# ============================================================
+# ------------------------------------------------------------
 
-def build_prompt(feature_id: str) -> str:
+def build_prompt(feature_id, retry=False):
+    retry_note = ""
+    if retry:
+        retry_note = """
+PREVIOUS ATTEMPT FAILED.
+Fix the diff. Ensure hunks, file headers, and line numbers are correct.
+Return a FULL unified diff.
+"""
+
     return f"""
 You are an autonomous software engineer acting as a deterministic compiler.
 
 GLOBAL EXECUTION CONVENTIONS:
-{read_file(GLOBAL_CONVENTIONS)}
+{read(GLOBAL_CONVENTIONS)}
 
 FEATURE PLAN:
-{read_file(os.path.join(FEATURES_DIR, f"{feature_id}.md"))}
+{read(os.path.join(FEATURES_DIR, f"{feature_id}.md"))}
+
+{retry_note}
 
 OUTPUT FORMAT (MANDATORY):
 - Output ONLY a valid unified git diff.
-- The diff MUST start with: diff --git
+- Must start with: diff --git
 - No explanations.
 - No markdown.
 - No extra text.
-- If no changes are required, output an EMPTY string.
+- If no changes are required, output EMPTY.
 """.strip()
 
-# ============================================================
-# LLM
-# ============================================================
+# ------------------------------------------------------------
 
-def run_llm(prompt: str) -> str:
+def run_llm(prompt):
     client = OpenAI()
-    response = client.chat.completions.create(
+    r = client.chat.completions.create(
         model=MODEL_NAME,
         messages=[
             {"role": "system", "content": "You generate valid unified git diffs only."},
@@ -104,83 +100,81 @@ def run_llm(prompt: str) -> str:
         ],
         temperature=0,
     )
-    return (response.choices[0].message.content or "").strip()
+    return (r.choices[0].message.content or "").strip()
 
-# ============================================================
-# Main
-# ============================================================
+# ------------------------------------------------------------
 
-def main() -> None:
+def apply_patch(patch):
+    if not patch.startswith("diff --git"):
+        return False
+
+    p = subprocess.Popen(
+        ["git", "apply"],
+        stdin=subprocess.PIPE,
+        cwd=REPO_ROOT,
+        text=True,
+    )
+    p.communicate(patch)
+    return p.returncode == 0
+
+# ------------------------------------------------------------
+
+def main():
     log(f"AUTONOMOUS MODE: {AUTONOMOUS_MODE}")
 
     os.makedirs(PROMPTS_DIR, exist_ok=True)
-
     state = load_state()
-    completed = set(state.get("completed_features", []))
+    done = set(state["completed_features"])
 
     features = list_features()
     total = len(features)
+    log(f"Found {total} features")
 
-    log(f"Discovered {total} features")
-
-    for idx, feature_id in enumerate(features, start=1):
-        if feature_id in completed:
+    for i, fid in enumerate(features, 1):
+        if fid in done:
             continue
 
-        prefix = f"[{idx}/{total}] Feature {feature_id}"
+        prefix = f"[{i}/{total}] Feature {fid}"
         log(f"{prefix} — START")
 
-        prompt = build_prompt(feature_id)
-
         if AUTONOMOUS_MODE == "prepare":
-            with open(os.path.join(PROMPTS_DIR, f"{feature_id}.txt"), "w") as f:
-                f.write(prompt)
+            with open(os.path.join(PROMPTS_DIR, f"{fid}.txt"), "w") as f:
+                f.write(build_prompt(fid))
             log(f"{prefix} — PREPARED")
             continue
 
-        log(f"{prefix} — LLM")
-        patch = run_llm(prompt)
+        # attempt 1
+        patch = run_llm(build_prompt(fid))
+        if patch and apply_patch(patch):
+            success = True
+        else:
+            # save failed patch
+            with open(os.path.join(STATE_DIR, f"{fid}.failed.diff"), "w") as f:
+                f.write(patch or "")
+            log(f"{prefix} — RETRY")
+            patch = run_llm(build_prompt(fid, retry=True))
+            success = patch and apply_patch(patch)
 
-        if not patch:
-            log(f"{prefix} — NO CHANGES")
-            completed.add(feature_id)
-            save_state({"completed_features": sorted(completed)})
-            continue
-
-        if not patch.startswith("diff --git"):
-            raise RuntimeError(f"{prefix} — INVALID DIFF HEADER")
-
-        log(f"{prefix} — APPLY")
-        process = subprocess.Popen(
-            ["git", "apply"],
-            stdin=subprocess.PIPE,
-            cwd=REPO_ROOT,
-            text=True,
-        )
-        process.communicate(patch)
-
-        if process.returncode != 0:
-            raise RuntimeError(f"{prefix} — DIFF APPLY FAILED")
+        if not success:
+            raise RuntimeError(f"{prefix}: failed to apply valid diff after retry")
 
         status = subprocess.check_output(
-            ["git", "status", "--porcelain"],
-            cwd=REPO_ROOT,
-            text=True,
+            ["git", "status", "--porcelain"], cwd=REPO_ROOT, text=True
         ).strip()
 
         if status:
-            log(f"{prefix} — COMMIT")
             git(["git", "add", "."])
-            git(["git", "commit", "-m", f"feature {feature_id}: implemented autonomously"])
+            git(["git", "commit", "-m", f"feature {fid}: implemented autonomously"])
             git(["git", "push", "origin", "main"])
+            log(f"{prefix} — COMMITTED")
         else:
-            log(f"{prefix} — NOTHING TO COMMIT")
+            log(f"{prefix} — NO CHANGES")
 
-        completed.add(feature_id)
-        save_state({"completed_features": sorted(completed)})
+        done.add(fid)
+        save_state({"completed_features": sorted(done)})
         log(f"{prefix} — DONE")
 
-    log("All features processed successfully.")
+    log("All features processed successfully")
 
 if __name__ == "__main__":
     main()
