@@ -97,6 +97,25 @@ def verify(state: Dict[str, Any]) -> None:
     state["history"].append({"phase": "VERIFY"})
 
 
+def implement_feature_001(state: Dict[str, Any]) -> None:
+    """
+    Minimal implementation stub for Feature 001.
+    This exists only to validate the autonomous execution pipeline.
+    """
+    if "001" in state["completed_features"]:
+        return
+
+    marker_path = "IMPLEMENTED_FEATURE_001.txt"
+
+    with open(marker_path, "w") as f:
+        f.write("Feature 001 implemented\n")
+
+    os.system("git add IMPLEMENTED_FEATURE_001.txt")
+    os.system('git commit -m "autonomous: implement feature 001"')
+
+    state["completed_features"].append("001")
+    state["history"].append({"implemented": "001"})
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -107,7 +126,7 @@ def main() -> None:
     # Simple deterministic lifecycle pass
     plan(state)
     approve(state)
-    implement(state)
+    implement_feature_001(state)
     verify(state)
 
     save_state(state)
