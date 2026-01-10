@@ -148,12 +148,17 @@ def main():
         if patch and apply_patch(patch):
             success = True
         else:
-            # save failed patch
+            # rollback partial changes before retry
+            log(f"{prefix} — CLEAN WORKTREE BEFORE RETRY")
+            git(["git", "reset", "--hard", "HEAD"])
+
             with open(os.path.join(STATE_DIR, f"{fid}.failed.diff"), "w") as f:
                 f.write(patch or "")
+
             log(f"{prefix} — RETRY")
             patch = run_llm(build_prompt(fid, retry=True))
             success = patch and apply_patch(patch)
+        
 
         if not success:
             raise RuntimeError(f"{prefix}: failed to apply valid diff after retry")
