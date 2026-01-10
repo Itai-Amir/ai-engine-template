@@ -17,6 +17,12 @@ FEATURE_001_PATH = os.path.join(
     "001-persist-candidate-knowledge-pack.yml",
 )
 
+FEATURE_002_PATH = os.path.join(
+    REPO_ROOT,
+    "features",
+    "002-load-knowledge-pack-immutable.yml",
+)
+
 # ---------------------------------------------------------------------------
 # Canonical state
 # ---------------------------------------------------------------------------
@@ -76,6 +82,9 @@ def verify(state: Dict[str, Any]) -> None:
 # Feature discovery
 # ---------------------------------------------------------------------------
 
+def feature_002_defined() -> bool:
+    return os.path.exists(FEATURE_002_PATH)
+    
 def feature_001_defined() -> bool:
     return os.path.exists(FEATURE_001_PATH)
 
@@ -140,6 +149,76 @@ def test_persist_and_reload_roundtrip(tmp_path):
     state["completed_features"].append("001")
     state["history"].append({"implemented": "001"})
 
+def implement_feature_002(state: Dict[str, Any]) -> None:
+    if "002" in state["completed_features"]:
+        return
+
+    ensure_git_identity()
+
+    src_path = os.path.join(REPO_ROOT, "src", "knowledge_pack.py")
+    test_path = os.path.join(
+        REPO_ROOT,
+        "tests",
+        "test_knowledge_pack_load_immutable.py",
+    )
+
+    # --- append implementation ---
+    with open(src_path, "a", encoding="utf-8") as f:
+        f.write(
+            """
+
+from types import MappingProxyType
+from typing import Mapping, Any
+import json
+
+
+def load_knowledge_pack(path: str) -> Mapping[str, Any]:
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    return MappingProxyType(data)
+"""
+        )
+
+    # --- test ---
+    with open(test_path, "w", encoding="utf-8") as f:
+        f.write(
+            """import json
+import pytest
+from src.knowledge_pack import load_knowledge_pack
+
+
+def test_load_knowledge_pack_is_immutable(tmp_path):
+    data = {"x": 1}
+    path = tmp_path / "kp.json"
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+    kp = load_knowledge_pack(str(path))
+    assert kp["x"] == 1
+
+    with pytest.raises(TypeError):
+        kp["x"] = 2
+"""
+        )
+
+    git([
+        "git",
+        "add",
+        "src/knowledge_pack.py",
+        "tests/test_knowledge_pack_load_immutable.py",
+    ])
+    git([
+        "git",
+        "commit",
+        "-m",
+        "autonomous: implement feature 002 load knowledge pack immutable",
+    ])
+    git(["git", "push", "origin", "HEAD:main"])
+
+    state["completed_features"].append("002")
+    state["history"].append({"implemented": "002"})
+
+
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
@@ -155,6 +234,9 @@ def main() -> None:
     if feature_001_defined():
         implement_feature_001(state)
 
+    if feature_002_defined():
+        implement_feature_002(state)
+            
     verify(state)
     save_state(state)
 
