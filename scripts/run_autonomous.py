@@ -13,11 +13,16 @@ sys.path.insert(0, REPO_ROOT)
 FEATURES_DIR = os.path.join(REPO_ROOT, "features")
 STATE_DIR = os.path.join(REPO_ROOT, "state")
 STATE_PATH = os.path.join(STATE_DIR, "progress.json")
+PROMPTS_DIR = os.path.join(STATE_DIR, "prompts")
 GLOBAL_CONVENTIONS_PATH = os.path.join(
     REPO_ROOT, "GLOBAL_EXECUTION_CONVENTIONS.md"
 )
 
-client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
+MODE = os.getenv("AUTONOMOUS_MODE", "execute")  # execute | prepare
+
+client = None
+if MODE == "execute":
+    client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 
 def load_global_conventions() -> str:
@@ -32,11 +37,11 @@ def load_feature_plan(feature_id: str) -> str:
 
 
 def list_features() -> List[str]:
-    ids = []
-    for name in os.listdir(FEATURES_DIR):
-        if name.endswith(".md"):
-            ids.append(name.replace(".md", ""))
-    return sorted(ids)
+    return sorted(
+        name.replace(".md", "")
+        for name in os.listdir(FEATURES_DIR)
+        if name.endswith(".md")
+    )
 
 
 def load_state() -> dict:
@@ -52,7 +57,7 @@ def save_state(state: dict) -> None:
         json.dump(state, f, indent=2, sort_keys=True)
 
 
-def build_llm_prompt(feature_id: str) -> str:
+def build_prompt(feature_id: str) -> str:
     return f"""
 You are an autonomous software compiler.
 
@@ -79,6 +84,13 @@ BEGIN.
 """.strip()
 
 
+def write_prompt(feature_id: str, prompt: str) -> None:
+    os.makedirs(PROMPTS_DIR, exist_ok=True)
+    path = os.path.join(PROMPTS_DIR, f"{feature_id}.txt")
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(prompt)
+
+
 def run_llm(prompt: str) -> None:
     response = client.chat.completions.create(
         model="gpt-4.1",
@@ -89,11 +101,7 @@ def run_llm(prompt: str) -> None:
         temperature=0,
     )
 
-    code = response.choices[0].message.content
-    apply_patch(code)
-
-
-def apply_patch(patch: str) -> None:
+    patch = response.choices[0].message.content
     process = subprocess.Popen(
         ["git", "apply"],
         stdin=subprocess.PIPE,
@@ -114,13 +122,21 @@ def main() -> None:
     state = load_state()
     completed = set(state.get("completed_features", []))
 
+    print(f"AUTONOMOUS MODE: {MODE.upper()}")
+    print(f"Found features: {', '.join(features)}")
+
     for feature_id in features:
         if feature_id in completed:
             continue
 
-        prompt = build_llm_prompt(feature_id)
-        run_llm(prompt)
+        prompt = build_prompt(feature_id)
 
+        if MODE == "prepare":
+            write_prompt(feature_id, prompt)
+            print(f"✔ Prepared feature {feature_id}")
+            continue
+
+        run_llm(prompt)
         subprocess.check_call(["pytest"], cwd=REPO_ROOT)
 
         git(["git", "add", "."])
@@ -133,6 +149,9 @@ def main() -> None:
         completed.add(feature_id)
         state["completed_features"] = sorted(completed)
         save_state(state)
+
+    if MODE == "prepare":
+        print("Preparation complete. No execution performed.")
 
 
 if __name__ == "__main__":
