@@ -96,7 +96,7 @@ def write_prompt(feature_id: str, prompt: str) -> None:
 
 def run_llm(prompt: str) -> None:
     response = client.chat.completions.create(
-        model="gpt-4.1",
+        model="gpt-4.1-mini",
         messages=[
             {"role": "system", "content": "You are a deterministic code generator."},
             {"role": "user", "content": prompt},
