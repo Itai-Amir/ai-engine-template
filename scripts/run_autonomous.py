@@ -2,56 +2,46 @@
 
 import os
 import json
+import subprocess
 from typing import Dict, Any
 
-STATE_PATH = "../state/progress.json"
-FEATURE_001_PATH = "features/001-persist-candidate-knowledge-pack.yml"
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
 
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+STATE_PATH = os.path.join(REPO_ROOT, "state", "progress.json")
+FEATURE_001_PATH = os.path.join(
+    REPO_ROOT,
+    "features",
+    "001-persist-candidate-knowledge-pack.yml",
+)
 
 # ---------------------------------------------------------------------------
-# Canonical engine state
+# Canonical state
 # ---------------------------------------------------------------------------
 
 INITIAL_STATE: Dict[str, Any] = {
     "phase": "PLAN",
     "completed_features": [],
     "current_feature": None,
-    "history": []
+    "history": [],
 }
-
 
 # ---------------------------------------------------------------------------
 # Git helpers
 # ---------------------------------------------------------------------------
 
-def ensure_git_identity() -> None:
-    os.system('git config user.name "autonomous-engine"')
-    os.system('git config user.email "autonomous@localhost"')
+def git(cmd: list[str]) -> None:
+    subprocess.check_call(cmd, cwd=REPO_ROOT)
 
+def ensure_git_identity() -> None:
+    git(["git", "config", "user.name", "autonomous-engine"])
+    git(["git", "config", "user.email", "autonomous@localhost"])
 
 # ---------------------------------------------------------------------------
 # State handling
 # ---------------------------------------------------------------------------
-
-def is_valid_state(state: Dict[str, Any]) -> bool:
-    if not isinstance(state, dict):
-        return False
-
-    required = {
-        "phase": str,
-        "completed_features": list,
-        "current_feature": (str, type(None)),
-        "history": list,
-    }
-
-    for key, expected_type in required.items():
-        if key not in state:
-            return False
-        if not isinstance(state[key], expected_type):
-            return False
-
-    return True
-
 
 def load_state() -> Dict[str, Any]:
     if not os.path.exists(STATE_PATH):
@@ -59,38 +49,28 @@ def load_state() -> Dict[str, Any]:
         return INITIAL_STATE.copy()
 
     with open(STATE_PATH, "r", encoding="utf-8") as f:
-        state = json.load(f)
-
-    if not is_valid_state(state):
-        raise RuntimeError("Invalid progress.json structure")
-
-    return state
-
+        return json.load(f)
 
 def save_state(state: Dict[str, Any]) -> None:
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
     with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, sort_keys=True)
 
-
 # ---------------------------------------------------------------------------
-# Lifecycle phases
+# Lifecycle
 # ---------------------------------------------------------------------------
 
 def plan(state: Dict[str, Any]) -> None:
     state["phase"] = "PLAN"
     state["history"].append({"phase": "PLAN"})
 
-
 def approve(state: Dict[str, Any]) -> None:
     state["phase"] = "APPROVE"
     state["history"].append({"phase": "APPROVE"})
 
-
 def verify(state: Dict[str, Any]) -> None:
     state["phase"] = "VERIFY"
     state["history"].append({"phase": "VERIFY"})
-
 
 # ---------------------------------------------------------------------------
 # Feature discovery
@@ -99,9 +79,8 @@ def verify(state: Dict[str, Any]) -> None:
 def feature_001_defined() -> bool:
     return os.path.exists(FEATURE_001_PATH)
 
-
 # ---------------------------------------------------------------------------
-# Feature 001 — Persist Candidate Knowledge Pack
+# Feature 001 implementation
 # ---------------------------------------------------------------------------
 
 def implement_feature_001(state: Dict[str, Any]) -> None:
@@ -110,14 +89,15 @@ def implement_feature_001(state: Dict[str, Any]) -> None:
 
     ensure_git_identity()
 
-    os.makedirs("src", exist_ok=True)
-    os.makedirs("tests", exist_ok=True)
-    os.makedirs("state", exist_ok=True)
+    src_dir = os.path.join(REPO_ROOT, "src")
+    test_dir = os.path.join(REPO_ROOT, "tests")
 
-    src_path = "src/knowledge_pack.py"
-    test_path = "tests/test_knowledge_pack_persistence.py"
+    os.makedirs(src_dir, exist_ok=True)
+    os.makedirs(test_dir, exist_ok=True)
 
-    # --- implementation ---
+    src_path = os.path.join(src_dir, "knowledge_pack.py")
+    test_path = os.path.join(test_dir, "test_knowledge_pack_persistence.py")
+
     with open(src_path, "w", encoding="utf-8") as f:
         f.write(
             """import json
@@ -130,7 +110,6 @@ def persist_knowledge_pack(knowledge_pack: Dict[str, Any], path: str) -> None:
 """
         )
 
-    # --- test ---
     with open(test_path, "w", encoding="utf-8") as f:
         f.write(
             """import json
@@ -141,7 +120,7 @@ def test_persist_and_reload_roundtrip(tmp_path):
     knowledge_pack = {
         "name": "Alice",
         "skills": ["python", "ai"],
-        "experience": 5
+        "experience": 5,
     }
 
     output = tmp_path / "knowledge_pack.json"
@@ -154,23 +133,20 @@ def test_persist_and_reload_roundtrip(tmp_path):
 """
         )
 
-    os.system("git add src/knowledge_pack.py tests/test_knowledge_pack_persistence.py")
-    os.system('git commit -m "autonomous: implement feature 001 persist knowledge pack"')
-    subprocess.check_call(["git", "push", "origin", "HEAD:main"])
+    git(["git", "add", "src/knowledge_pack.py", "tests/test_knowledge_pack_persistence.py"])
+    git(["git", "commit", "-m", "autonomous: implement feature 001 persist knowledge pack"])
+    git(["git", "push", "origin", "HEAD:main"])
 
     state["completed_features"].append("001")
     state["history"].append({"implemented": "001"})
-
 
 # ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    # 🔥 CRITICAL: always run from repo root
-    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    os.chdir(repo_root)
-    
+    os.chdir(REPO_ROOT)
+
     state = load_state()
 
     plan(state)
@@ -181,7 +157,6 @@ def main() -> None:
 
     verify(state)
     save_state(state)
-
 
 if __name__ == "__main__":
     main()
