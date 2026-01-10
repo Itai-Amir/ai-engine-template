@@ -166,6 +166,9 @@ def test_persist_and_reload_roundtrip(tmp_path):
 # ---------------------------------------------------------------------------
 
 def main() -> None:
+    # 🔥 CRITICAL: always run from repo root
+    repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    os.chdir(repo_root)
     state = load_state()
 
     plan(state)
