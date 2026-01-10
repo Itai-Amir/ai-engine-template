@@ -85,6 +85,10 @@ def verify(state: Dict[str, Any]) -> None:
 # Feature 001 — Persist Candidate Knowledge Pack
 # ---------------------------------------------------------------------------
 
+def ensure_git_identity() -> None:
+    os.system('git config user.name "autonomous-engine"')
+    os.system('git config user.email "autonomous@localhost"')
+
 def implement_feature_001_persist_knowledge_pack(state: Dict[str, Any]) -> None:
     if "001" in state["completed_features"]:
         return
@@ -133,6 +137,7 @@ def test_persist_and_reload_roundtrip(tmp_path):
 """
         )
 
+    ensure_git_identity()
     os.system("git add src/knowledge_pack.py tests/test_knowledge_pack_persistence.py")
     os.system('git commit -m "autonomous: implement feature 001 persist knowledge pack"')
 
