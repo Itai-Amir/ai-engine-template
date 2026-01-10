@@ -156,7 +156,7 @@ def test_persist_and_reload_roundtrip(tmp_path):
 
     os.system("git add src/knowledge_pack.py tests/test_knowledge_pack_persistence.py")
     os.system('git commit -m "autonomous: implement feature 001 persist knowledge pack"')
-    os.system("git push origin HEAD:main")
+    subprocess.check_call(["git", "push", "origin", "HEAD:main"])
 
     state["completed_features"].append("001")
     state["history"].append({"implemented": "001"})
