@@ -169,6 +169,11 @@ def main() -> None:
     # 🔥 CRITICAL: always run from repo root
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     os.chdir(repo_root)
+
+    print("CWD:", os.getcwd())
+    print("FILES IN ROOT:", os.listdir("."))
+    print("FEATURE 001 EXISTS:", os.path.exists("features/001-persist-candidate-knowledge-pack.yml"))
+    
     state = load_state()
 
     plan(state)
