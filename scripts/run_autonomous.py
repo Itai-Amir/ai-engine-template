@@ -5,6 +5,8 @@ import json
 from typing import Dict, Any
 
 STATE_PATH = "../state/progress.json"
+FEATURE_001_PATH = "features/001-persist-candidate-knowledge-pack.yml"
+
 
 # ---------------------------------------------------------------------------
 # Canonical engine state
@@ -16,6 +18,15 @@ INITIAL_STATE: Dict[str, Any] = {
     "current_feature": None,
     "history": []
 }
+
+
+# ---------------------------------------------------------------------------
+# Git helpers
+# ---------------------------------------------------------------------------
+
+def ensure_git_identity() -> None:
+    os.system('git config user.name "autonomous-engine"')
+    os.system('git config user.email "autonomous@localhost"')
 
 
 # ---------------------------------------------------------------------------
@@ -82,16 +93,22 @@ def verify(state: Dict[str, Any]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Feature discovery
+# ---------------------------------------------------------------------------
+
+def feature_001_defined() -> bool:
+    return os.path.exists(FEATURE_001_PATH)
+
+
+# ---------------------------------------------------------------------------
 # Feature 001 — Persist Candidate Knowledge Pack
 # ---------------------------------------------------------------------------
 
-def ensure_git_identity() -> None:
-    os.system('git config user.name "autonomous-engine"')
-    os.system('git config user.email "autonomous@localhost"')
-
-def implement_feature_001_persist_knowledge_pack(state: Dict[str, Any]) -> None:
+def implement_feature_001(state: Dict[str, Any]) -> None:
     if "001" in state["completed_features"]:
         return
+
+    ensure_git_identity()
 
     os.makedirs("src", exist_ok=True)
     os.makedirs("tests", exist_ok=True)
@@ -137,7 +154,6 @@ def test_persist_and_reload_roundtrip(tmp_path):
 """
         )
 
-    ensure_git_identity()
     os.system("git add src/knowledge_pack.py tests/test_knowledge_pack_persistence.py")
     os.system('git commit -m "autonomous: implement feature 001 persist knowledge pack"')
 
@@ -155,7 +171,8 @@ def main() -> None:
     plan(state)
     approve(state)
 
-    implement_feature_001_persist_knowledge_pack(state)
+    if feature_001_defined():
+        implement_feature_001(state)
 
     verify(state)
     save_state(state)
