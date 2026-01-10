@@ -2,7 +2,6 @@
 
 import os
 import json
-import sys
 from typing import Dict, Any
 
 STATE_PATH = "../state/progress.json"
@@ -23,16 +22,32 @@ INITIAL_STATE: Dict[str, Any] = {
 # State handling
 # ---------------------------------------------------------------------------
 
+def is_valid_state(state: Dict[str, Any]) -> bool:
+    if not isinstance(state, dict):
+        return False
+
+    required = {
+        "phase": str,
+        "completed_features": list,
+        "current_feature": (str, type(None)),
+        "history": list,
+    }
+
+    for key, expected_type in required.items():
+        if key not in state:
+            return False
+        if not isinstance(state[key], expected_type):
+            return False
+
+    return True
+
+
 def load_state() -> Dict[str, Any]:
-    """
-    Load engine state from disk.
-    If this is the first run, bootstrap a canonical initial state.
-    """
     if not os.path.exists(STATE_PATH):
         os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
         return INITIAL_STATE.copy()
 
-    with open(STATE_PATH, "r") as f:
+    with open(STATE_PATH, "r", encoding="utf-8") as f:
         state = json.load(f)
 
     if not is_valid_state(state):
@@ -42,39 +57,13 @@ def load_state() -> Dict[str, Any]:
 
 
 def save_state(state: Dict[str, Any]) -> None:
-    """
-    Persist engine state to disk.
-    """
     os.makedirs(os.path.dirname(STATE_PATH), exist_ok=True)
-    with open(STATE_PATH, "w") as f:
+    with open(STATE_PATH, "w", encoding="utf-8") as f:
         json.dump(state, f, indent=2, sort_keys=True)
 
 
-def is_valid_state(state: Dict[str, Any]) -> bool:
-    """
-    Validate state structure strictly.
-    """
-    if not isinstance(state, dict):
-        return False
-
-    required_keys = {
-        "phase": str,
-        "completed_features": list,
-        "current_feature": (str, type(None)),
-        "history": list,
-    }
-
-    for key, expected_type in required_keys.items():
-        if key not in state:
-            return False
-        if not isinstance(state[key], expected_type):
-            return False
-
-    return True
-
-
 # ---------------------------------------------------------------------------
-# Autonomous lifecycle (skeleton – feature logic lives elsewhere)
+# Lifecycle phases
 # ---------------------------------------------------------------------------
 
 def plan(state: Dict[str, Any]) -> None:
@@ -87,14 +76,69 @@ def approve(state: Dict[str, Any]) -> None:
     state["history"].append({"phase": "APPROVE"})
 
 
-def implement(state: Dict[str, Any]) -> None:
-    state["phase"] = "IMPLEMENT"
-    state["history"].append({"phase": "IMPLEMENT"})
-
-
 def verify(state: Dict[str, Any]) -> None:
     state["phase"] = "VERIFY"
     state["history"].append({"phase": "VERIFY"})
+
+
+# ---------------------------------------------------------------------------
+# Feature 001 — Persist Candidate Knowledge Pack
+# ---------------------------------------------------------------------------
+
+def implement_feature_001_persist_knowledge_pack(state: Dict[str, Any]) -> None:
+    if "001" in state["completed_features"]:
+        return
+
+    os.makedirs("src", exist_ok=True)
+    os.makedirs("tests", exist_ok=True)
+    os.makedirs("state", exist_ok=True)
+
+    src_path = "src/knowledge_pack.py"
+    test_path = "tests/test_knowledge_pack_persistence.py"
+
+    # --- implementation ---
+    with open(src_path, "w", encoding="utf-8") as f:
+        f.write(
+            """import json
+from typing import Dict, Any
+
+
+def persist_knowledge_pack(knowledge_pack: Dict[str, Any], path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(knowledge_pack, f, sort_keys=True, ensure_ascii=False)
+"""
+        )
+
+    # --- test ---
+    with open(test_path, "w", encoding="utf-8") as f:
+        f.write(
+            """import json
+from src.knowledge_pack import persist_knowledge_pack
+
+
+def test_persist_and_reload_roundtrip(tmp_path):
+    knowledge_pack = {
+        "name": "Alice",
+        "skills": ["python", "ai"],
+        "experience": 5
+    }
+
+    output = tmp_path / "knowledge_pack.json"
+    persist_knowledge_pack(knowledge_pack, str(output))
+
+    with open(output, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+
+    assert loaded == knowledge_pack
+"""
+        )
+
+    os.system("git add src/knowledge_pack.py tests/test_knowledge_pack_persistence.py")
+    os.system('git commit -m "autonomous: implement feature 001 persist knowledge pack"')
+
+    state["completed_features"].append("001")
+    state["history"].append({"implemented": "001"})
+
 
 # ---------------------------------------------------------------------------
 # Entry point
@@ -103,11 +147,14 @@ def verify(state: Dict[str, Any]) -> None:
 def main() -> None:
     state = load_state()
 
-    # Simple deterministic lifecycle pass
     plan(state)
     approve(state)
+
+    implement_feature_001_persist_knowledge_pack(state)
+
     verify(state)
     save_state(state)
+
 
 if __name__ == "__main__":
     main()
