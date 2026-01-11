@@ -2,16 +2,15 @@
 import json
 import os
 import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
 from openai import OpenAI
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Configuration
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 FEATURES_DIR = REPO_ROOT / "features"
@@ -23,9 +22,9 @@ OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "gpt-4.1-mini")
 
 client = OpenAI()
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Utilities
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 def log(msg: str) -> None:
     ts = datetime.now().strftime("%H:%M:%S")
@@ -38,37 +37,35 @@ def write_file(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # State
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 def load_state() -> Dict:
     if not STATE_FILE.exists():
         return {"completed": []}
-    return json.loads(STATE_FILE.read_text())
+    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
 
 def save_state(state: Dict) -> None:
     STATE_DIR.mkdir(exist_ok=True)
-    STATE_FILE.write_text(json.dumps(state, indent=2))
+    STATE_FILE.write_text(json.dumps(state, indent=2), encoding="utf-8")
 
-# -------------------------------------------------------------------
-# Feature Discovery
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# Feature Discovery (numeric-only: 001.md, 050.md, etc.)
+# ---------------------------------------------------------------------
 
-def discover_features() -> List[str]:
-    features = []
-    for f in sorted(FEATURES_DIR.glob("*.md")):
-        name = f.stem.split("-", 1)[0]
-        if name.isdigit():
-            features.append(name)
-    return features
+def discover_features() -> List[Path]:
+    return sorted(
+        f for f in FEATURES_DIR.glob("*.md")
+        if f.stem.isdigit()
+    )
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Prompt
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 def build_prompt(feature_id: str, feature_file: Path) -> str:
-    spec = feature_file.read_text()
+    spec = feature_file.read_text(encoding="utf-8")
 
     return f"""
 You are an autonomous senior software engineer.
@@ -79,15 +76,15 @@ Implement feature {feature_id} EXACTLY as specified.
 Rules (MANDATORY):
 - Output MUST be valid JSON
 - Top-level key: "files"
-- Each key is a file path
+- Each key is a file path relative to repo root
 - Each value is FULL file content
 - Do NOT output diffs
 - Do NOT explain
 - Do NOT include markdown
-- Do NOT include comments outside code
+- Do NOT include text outside JSON
 - Overwrite files if they already exist
 
-Example format:
+Expected output format:
 {{
   "files": {{
     "src/example.py": "full file content",
@@ -99,9 +96,9 @@ Feature specification:
 {spec}
 """.strip()
 
-# -------------------------------------------------------------------
-# LLM Execution
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
+# LLM Execution (file-based)
+# ---------------------------------------------------------------------
 
 def run_llm(prompt: str) -> Dict[str, Dict[str, str]]:
     response = client.chat.completions.create(
@@ -112,9 +109,9 @@ def run_llm(prompt: str) -> Dict[str, Dict[str, str]]:
     content = response.choices[0].message.content
     return json.loads(content)
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 # Main Engine
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 def main() -> None:
     log(f"AUTONOMOUS MODE: {AUTONOMOUS_MODE}")
@@ -122,22 +119,16 @@ def main() -> None:
     state = load_state()
     completed = set(state.get("completed", []))
 
-    features = discover_features()
-    log(f"Found {len(features)} features")
+    feature_files = discover_features()
+    log(f"Found {len(feature_files)} features")
 
-    for idx, fid in enumerate(features, start=1):
-        prefix = f"[{idx}/{len(features)}] Feature {fid}"
+    for idx, feature_file in enumerate(feature_files, start=1):
+        fid = feature_file.stem
+        prefix = f"[{idx}/{len(feature_files)}] Feature {fid}"
 
         if fid in completed:
             log(f"{prefix} — SKIP (already completed)")
             continue
-
-        matches = list(FEATURES_DIR.glob(f"{fid}-*.md"))
-        if not matches:
-            log(f"{prefix} — SKIP (no feature spec file found)")
-            continue
-
-        feature_file = matches[0]
 
         log(f"{prefix} — START")
 
@@ -171,7 +162,7 @@ def main() -> None:
 
     log("All features processed successfully")
 
-# -------------------------------------------------------------------
+# ---------------------------------------------------------------------
 
 if __name__ == "__main__":
     main()
